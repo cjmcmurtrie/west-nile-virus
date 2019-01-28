@@ -1,4 +1,5 @@
 import os
+import re
 import math
 import pandas as pd
 from datetime import datetime
@@ -22,15 +23,16 @@ def string_time_to_minutes(string):
     return (hours * 60. + minutes) // 60.
 
 
-def get_df(dataset, aggregate=False):
+def get_df(dataset, aggregate=True):
     df = pd.read_csv(
         open(os.path.join(BASE_PATH, 'data/{}.csv'.format(dataset)), 'r')
     )
     df.columns = map(str.lower, df.columns)
-    if dataset == 'train' and aggregate:
+    if dataset in ('train', 'test') and aggregate:
         cols = list(df.columns)
-        cols.remove('nummosquitos')
-        df = df.groupby(cols)['nummosquitos'].apply(sum).reset_index()
+        if 'nummosquitos' in cols:
+            cols.remove('nummosquitos')
+            df = df.groupby(cols)['nummosquitos'].apply(sum).reset_index()
     return df
 
 
@@ -66,12 +68,24 @@ def coordinate_distance(c1, c2):
     return math.sqrt((c1[0] - c2[0]) ** 2. + (c1[1] - c2[1]) ** 2.)
 
 
-def closest_coord(c1, coords):
+def closest_coord(c1, coords, val='index'):
     dists = []
     for i, coord in enumerate(coords):
         dists.append(coordinate_distance(c1, coord))
-    return dists.index(min(dists))
+    if val == 'index':
+        return dists.index(min(dists))
+    elif val == 'distance':
+        return min(dists)
 
 
 def rolling_average(series, window, min_periods=1):
     return series.rolling(window=window, min_periods=min_periods).mean()
+
+
+def address_zipcode(address):
+    match = re.findall('\d{5,}', address)
+    if match:
+        return match[0]
+    else:
+        return None
+
