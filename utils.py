@@ -50,7 +50,7 @@ def day_to_sine(day):
 
 
 def normalise(pd_series):
-    return (pd_series - pd_series.min()) / (pd_series.max() + pd_series.min())
+    return (pd_series - pd_series.min()) / (pd_series.max() - pd_series.min())
 
 
 def normalise_numeric(series):

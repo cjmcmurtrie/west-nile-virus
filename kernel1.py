@@ -197,14 +197,12 @@ def train():
     y = assemble_y(training)
 
     from sklearn.ensemble import RandomForestClassifier
-    from sklearn.linear_model import LogisticRegression
-    net = LogisticRegression(class_weight='balanced')
-    # net = RandomForestClassifier()
+    net = RandomForestClassifier(n_estimators=200)
 
-    X, y = shuffle(X, y, random_state=123)
+    # X, y = shuffle(X, y, random_state=123)
     net.fit(X, y)
 
-    ix = int(X.shape[0] * 0.97)
+    ix = int(X.shape[0] * 0.2)
     Xtr = X[:ix]
     Xte = X[ix:]
     ytr = y[:ix]
@@ -213,7 +211,6 @@ def train():
     net.fit(Xtr, ytr)
     probas = net.predict_proba(Xte)[:, 1]
     print("ROC score", metrics.roc_auc_score(yte, probas))
-
     return net, mean, std
 
 
@@ -222,13 +219,11 @@ def submit(net, mean, std):
     testing = load_testing()
     X = assemble_X(testing, weather)
     normalize(X, mean, std)
-    probas = net.predict_proba(X)[:, 1]
-    ids = range(1, probas.shape[0] + 1)
-    submission = pd.DataFrame({
-        'Id': ids,
-        'WnvPresent': probas
-    })
-    submission.to_csv('submissions/submission_{}.csv'.format(datetime.datetime.now()), index=False)
+    predictions = net.predict_proba(X)[:, 1]
+    out = csv.writer(open("submissions/submission_{}.csv".format(datetime.datetime.now()), "w"))
+    out.writerow(["Id", "WnvPresent"])
+    for row, p in zip(testing, predictions):
+        out.writerow([row["Id"], p])
 
 
 if __name__ == "__main__":
