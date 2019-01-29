@@ -44,6 +44,14 @@ def day_of_year(dt):
     return dt.timetuple().tm_yday
 
 
+def month_num(dt):
+    return dt.month
+
+
+def month_to_cosine(dt):
+    return math.cos(2 * math.pi / 12 * (month_num(dt) - 8))
+
+
 def day_to_sine(day):
     # see: https://math.stackexchange.com/questions/650223/formula-for-sine-wave-that-lines-up-with-calendar-seasons
     return math.sin(2 * math.pi / 365 * (day - 81.75))
@@ -89,3 +97,41 @@ def address_zipcode(address):
     else:
         return None
 
+
+def load_city_data():
+    indicators = get_df('se_indicators')
+    census = get_df('census')
+    city = pd.merge(indicators, census, left_on='community area number', right_on='geogkey')
+    zipcodes = get_df('comarea_zipcode')
+    df = pd.merge(city, zipcodes, left_on='community area number', right_on='chgoca')
+    df = df.groupby('zcta5').mean().reset_index()
+    return df
+
+
+def trap_incidence():
+    df = get_df('train')
+    incidence = df.groupby('trap').sum().reset_index()
+    incidence = incidence[['trap', 'wnvpresent']]
+    incidence.rename(columns={'wnvpresent': 'tincidence'}, inplace=True)
+    return incidence
+
+
+def block_incidence():
+    df = get_df('train')
+    incidence = df.groupby('block').sum().reset_index()
+    incidence = incidence[['block', 'wnvpresent']]
+    incidence.rename(columns={'wnvpresent': 'bincidence'}, inplace=True)
+    return incidence
+
+
+def zipcode_incidence():
+    df = get_df('train')
+    df['zipcode'] = pd.to_numeric(df['address'].apply(address_zipcode))
+    incidence = df.groupby('zipcode').sum().reset_index()
+    incidence = incidence[['zipcode', 'wnvpresent']]
+    incidence.rename(columns={'wnvpresent': 'zincidence'}, inplace=True)
+    return incidence
+
+
+if __name__ == '__main__':
+    zipcode_incidence()

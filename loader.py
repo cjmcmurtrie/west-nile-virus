@@ -1,18 +1,18 @@
-import re
-import math
 import warnings
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from sklearn.ensemble import RandomForestClassifier
+import matplotlib.pyplot as plt
 from sklearn.metrics import roc_auc_score
+from ffn import FFN
 from utils import (
-    date, get_df, day_of_year, day_to_sine, day_length, rolling_average, address_zipcode,
-    normalise, normalise_numeric, SPECIES_MAP, closest_coord, string_time_to_minutes
+    date, get_df, day_of_year, day_to_sine, day_length,
+    rolling_average, address_zipcode, load_city_data, trap_incidence, block_incidence, zipcode_incidence,
+    normalise, normalise_numeric, SPECIES_MAP, string_time_to_minutes, month_num, month_to_cosine
 )
 
 warnings.filterwarnings('ignore')
-np.random.seed(2)
+np.random.seed(1)
 
 
 def normalise_columns(df, columns=None, exclude_columns=None):
@@ -25,8 +25,10 @@ def normalise_columns(df, columns=None, exclude_columns=None):
     for column in columns:
         try:
             df[column] = normalise_numeric(df[column])
-        except TypeError:
+        except TypeError as e:
+            print(df[column])
             print('Error normalizing column:', column)
+            print(str(e))
             exit()
     return df
 
@@ -36,11 +38,21 @@ def prepro_train(df):
         df['nummosquitos'] = 1
     df['date'] = df['date'].apply(date)
     df['day'] = df['date'].apply(day_of_year)
+    df['month'] = df['date'].apply(month_num)
+    df['monthcos'] = df['date'].apply(month_to_cosine)
     df['daysine'] = df['day'].apply(day_to_sine)
     df['zipcode'] = pd.to_numeric(df['address'].apply(address_zipcode))
+    # todo: you're including future values in incidence calculations. Compute incidence only on
+    # past values.
+    df = pd.merge(df, trap_incidence(), how='left', on='trap', suffixes=['', '_'])
+    df['tincidencebinary'] = (df.tincidence.values > 0).astype(int)
+    df = pd.merge(df, block_incidence(), how='left', on='block', suffixes=['', '_'])
+    df['bincidencebinary'] = (df.bincidence.values > 0).astype(int)
+    df = pd.merge(df, zipcode_incidence(), how='left', on='zipcode', suffixes=['', '_'])
+    df['zincidencebinary'] = (df.zincidence.values > 0).astype(int)
     df = species_features(df)
     df = normalise_columns(df, columns=['nummosquitos', 'latitude', 'longitude'])
-    city_regions(df[['latitude', 'longitude']].values)
+    df = grid_regions(df)
     return df
 
 
@@ -57,9 +69,22 @@ def species_features(df):
     return df_concat
 
 
-def city_regions(coordinates, x_split=10, y_split=10):
-    pass
-    # todo
+def grid_regions(df, binx=10, biny=5):
+    # best at 20, 40.
+    stepx = 1. / binx
+    stepy = 1. / biny
+    to_bin_x = lambda x: np.floor(x / stepx) * stepx
+    to_bin_y = lambda y: np.floor(y / stepy) * stepy
+    df['latbin'] = df.latitude.map(to_bin_y)
+    df['lonbin'] = df.longitude.map(to_bin_x)
+    df['region'] = list(zip(df.latbin, df.lonbin))
+    df['region'] = df['region'].astype('category')
+    df['region'] = df['region'].cat.rename_categories(
+        {cat: 'region{}'.format(i) for i, cat in enumerate(df['region'].cat.categories)}
+    )
+    df = pd.concat(([df, pd.get_dummies(df['region'])]), axis=1)
+    df.drop(['region'], axis=1, inplace=True)
+    return df
 
 
 def prepro_weather(df):
@@ -72,14 +97,17 @@ def prepro_weather(df):
     df['date'] = df['date'].apply(date)
     df['year'] = df['date'].apply(lambda x: x.year)
     df['daylight'] = df.apply(lambda row: day_length(row['sunrise'], row['sunset']), axis=1)
+    df['dl_binary'] = pd.Series((df['daylight'].values > 10).astype(int))
     df['sunrise'] = df['sunrise'].apply(string_time_to_minutes)
     df['sunset'] = df['sunset'].apply(string_time_to_minutes)
     year_dfs = []
     for year, year_df in df.groupby('year'):
-        year_df['cumtmax'] = rolling_average(year_df['tmax'], window=10)
-        year_df['cumtmin'] = rolling_average(year_df['tmin'], window=10)
-        year_df['cumtavg'] = rolling_average(year_df['tavg'], window=5)
-        year_df['cumprecip'] = rolling_average(year_df['preciptotal'], window=3)
+        year_df['rainprev'] = (np.hstack([np.array([0] * 2), year_df['preciptotal'][:-2].values]).astype(float) > 0).astype(int)
+        year_df['dpprev'] = np.hstack([np.array([0] * 1), year_df['dewpoint'][:-1].values])
+        year_df['wbprev'] = np.hstack([np.array([0] * 1), year_df['wetbulb'][:-1].values])
+        year_df['cumtmax'] = rolling_average(year_df['tmax'], window=11)
+        year_df['cumtmin'] = rolling_average(year_df['tmin'], window=11)
+        year_df['cumdir'] = rolling_average(year_df['resultdir'], window=2)
         year_df = year_df.fillna(method='pad')
         year_dfs.append(year_df)
     df = pd.concat(year_dfs, axis=0)
@@ -95,7 +123,6 @@ def prepro_weather(df):
 
 
 def prepro_indicators(df):
-    # df.drop(['community area name', 'community area number'], axis=1, inplace=True)
     cols = list(df.columns)
     cols.remove('community area name')
     cols.remove('community area number')
@@ -108,11 +135,9 @@ def merge_weather(traps, weather):
     return merged.fillna(method='pad')
 
 
-def merge_indicators(traps, indicators):
-    zipcodes = get_df('comarea_zipcode')
-    economic = pd.merge(indicators, zipcodes, left_on='community area number', right_on='chgoca')
-    economic = economic.groupby('zcta5').mean().reset_index()
-    merged = pd.merge(traps, economic, how='left', left_on='zipcode', right_on='zcta5')
+def merge_indicators(traps):
+    city = load_city_data()
+    merged = pd.merge(traps, city, how='left', left_on='zipcode', right_on='zcta5')
     return merged.fillna(method='pad')
 
 
@@ -145,19 +170,42 @@ class Loader(object):
         self.keep_cols = [
             'year',
             'daysine',
-            'latitude',
-            'longitude',
+            'monthcos',
+            'latitude_x',
+            'longitude_x',
             'species1',
             'species2',
             'species3',
+            'species4',
+            'species5',
+            'species6',
             'daylight',
-            'magnitude', 'direction',
+            'dl_binary',
+            'cumtmax',
+            'resultdir',
+            'cumdir',
+            'rainprev',
+            'dpprev',
+            'wbprev',
+            'tincidence',
+            # 'tincidencebinary',
+            'bincidence',
+            # 'bincidencebinary',
+            'zincidence',
+            # 'zincidencebinary',
+            'percent of housing crowded',
+            'per capita income ',
+            'total housing units',
+            'not hispanic or latino, black or african american alone',
+            'vacant housing units',
             self.target
         ]
         self.merged = self._merge_df(self.traps)
 
     def _merge_df(self, df):
         merged = merge_weather(df, self.weather)
+        merged = merged.fillna(method='pad')
+        merged = merge_indicators(merged)
         merged = merged.fillna(method='pad')
         merged = merged[self.keep_cols]
         merged = normalise_columns(merged, exclude_columns=['year'])
@@ -177,15 +225,15 @@ class Loader(object):
     def build_submission(self):
         train_i = self.merged.drop(self.target, axis=1)
         train_t = self.merged[self.target]
-        model = RandomForestClassifier(
-            n_estimators=1000,
-            max_depth=5,
-            criterion='entropy',
-        ).fit(train_i, train_t)
+        train_i.drop(['year'], axis=1, inplace=True)
+        model = FFN(n_features=len(train_i.columns), hidden=200, n_classes=1)
+        model.fit(train_i.values, train_t.values)
         self.keep_cols.remove(self.target)
-        merged_test = self.merged = self._merge_df(self.test)
-        probas = model.predict_proba(merged_test)[:, 1]
-        probas = (probas - np.min(probas)) / (np.max(probas) - np.min(probas))
+        merged_test = self._merge_df(self.test)
+        merged_test.drop(['year'], axis=1, inplace=True)
+        probas = model.predict_proba(merged_test.values)
+        plt.plot(probas)
+        plt.show()
         ids = range(1, probas.shape[0] + 1)
         submission = pd.DataFrame({
             'Id': ids,
@@ -194,31 +242,30 @@ class Loader(object):
         submission.to_csv('submissions/submission_{}.csv'.format(datetime.now()), index=False)
 
 
-def test_train(loader):
+def test_train(loader, testing=True, submit=True):
     scores = []
     year_scores = []
     loader.merge()
-    years = [2007, 2009, 2011, 2013]
-    for year in years:
-        for exp in range(5):
-            loader.split(year, [2007, 2009, 2011, 2013])
-            model = RandomForestClassifier(
-                n_estimators=200,
-                max_depth=5,
-                criterion='entropy',
-            ).fit(loader.train_i, loader.train_t)
-            probas = model.predict_proba(loader.test_i.values)[:, 1]
-            scores.append(roc_auc_score(loader.test_t.values, probas))
-            print('{year}. {exp}. ROC AUC: {score}'.format(
-                year=year,
-                exp=exp,
-                score=scores[-1]
-            ))
-        year_scores.append(np.mean(scores))
-        print('Mean year score: {}'.format(year_scores[-1]))
-        scores = []
-    print('Mean score: {}'.format(np.mean(year_scores)))
-    # loader.build_submission()
+    if testing:
+        years = [2007, 2009, 2011, 2013]
+        for year in years:
+            for exp in range(5):
+                loader.split(year, [2007, 2009, 2011, 2013])
+                model = FFN(n_features=len(loader.train_i.columns), hidden=500, n_classes=1)
+                model.fit(loader.train_i.values, loader.train_t.values)
+                probas = model.predict_proba(loader.test_i.values)
+                scores.append(roc_auc_score(loader.test_t.values, probas))
+                print('{year}. {exp}. ROC AUC: {score}'.format(
+                    year=year,
+                    exp=exp,
+                    score=scores[-1]
+                ))
+            year_scores.append(np.mean(scores))
+            print('Mean year score: {}'.format(year_scores[-1]))
+            scores = []
+        print('Mean score: {}'.format(np.mean(year_scores)))
+    if submit:
+        loader.build_submission()
 
 
 if __name__ == '__main__':
