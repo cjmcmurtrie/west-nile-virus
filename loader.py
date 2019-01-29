@@ -8,8 +8,10 @@ from ffn import FFN
 from utils import (
     date, get_df, day_of_year, day_to_sine, day_length,
     rolling_average, address_zipcode, load_city_data, trap_incidence, block_incidence, zipcode_incidence,
-    normalise, normalise_numeric, SPECIES_MAP, string_time_to_minutes, month_num, month_to_cosine
+    normalise_numeric, SPECIES_MAP, string_time_to_minutes, month_num, month_to_cosine,
+    infer_test_trap_incidence, infer_test_block_incidence
 )
+
 
 warnings.filterwarnings('ignore')
 np.random.seed(1)
@@ -33,7 +35,7 @@ def normalise_columns(df, columns=None, exclude_columns=None):
     return df
 
 
-def prepro_train(df):
+def prepro_train(df, mode='train'):
     if 'nummosquitos' not in df.columns:
         df['nummosquitos'] = 1
     df['date'] = df['date'].apply(date)
@@ -43,13 +45,11 @@ def prepro_train(df):
     df['daysine'] = df['day'].apply(day_to_sine)
     df['zipcode'] = pd.to_numeric(df['address'].apply(address_zipcode))
     # todo: you're including future values in incidence calculations. Compute incidence only on
-    # past values.
-    df = pd.merge(df, trap_incidence(), how='left', on='trap', suffixes=['', '_'])
-    df['tincidencebinary'] = (df.tincidence.values > 0).astype(int)
-    df = pd.merge(df, block_incidence(), how='left', on='block', suffixes=['', '_'])
-    df['bincidencebinary'] = (df.bincidence.values > 0).astype(int)
-    df = pd.merge(df, zipcode_incidence(), how='left', on='zipcode', suffixes=['', '_'])
-    df['zincidencebinary'] = (df.zincidence.values > 0).astype(int)
+    if mode == 'train':
+        df = trap_incidence(df)
+        df['tincidencebinary'] = (df.tincidence.values > 0).astype(int)
+        df = block_incidence(df)
+        df['bincidencebinary'] = (df.bincidence.values > 0).astype(int)
     df = species_features(df)
     df = normalise_columns(df, columns=['nummosquitos', 'latitude', 'longitude'])
     df = grid_regions(df)
@@ -131,13 +131,13 @@ def prepro_indicators(df):
 
 
 def merge_weather(traps, weather):
-    merged = pd.merge(traps, weather, how='left', on='date')
+    merged = pd.merge(traps, weather, how='left', on='date', suffixes=['', 'w_'])
     return merged.fillna(method='pad')
 
 
 def merge_indicators(traps):
     city = load_city_data()
-    merged = pd.merge(traps, city, how='left', left_on='zipcode', right_on='zcta5')
+    merged = pd.merge(traps, city, how='left', left_on='zipcode', right_on='zcta5', suffixes=['', 'i_'])
     return merged.fillna(method='pad')
 
 
@@ -154,13 +154,18 @@ class Loader(object):
             # 'percent aged 16+ unemployed',
             # 'percent aged 25+ without high school diploma',
             # 'percent aged under 18 or over 64', 'per capita income ',
+        todo:
+            # use nummosquitos: test data rows that are duplicates fill with nummosquitos = 50.
         '''
         self.target = 'wnvpresent'
-        self.traps = prepro_train(get_df('train'))
+        self.traps = prepro_train(get_df('train'), mode='train')
         self.spray = get_df('spray')
         self.weather = prepro_weather(get_df('weather'))
         self.indicators = prepro_indicators(get_df('se_indicators'))
         self.test = prepro_train(get_df('test'))
+        self.test = infer_test_trap_incidence(self.test)
+        self.test = infer_test_block_incidence(self.test)
+        self.test.to_csv('testincidence.csv')
         self.transfer_stations = get_df('transfer_stations')
         self.zipcodes = get_df('comarea_zipcode')
         self.merged = None
@@ -171,8 +176,8 @@ class Loader(object):
             'year',
             'daysine',
             'monthcos',
-            'latitude_x',
-            'longitude_x',
+            'latitude',
+            'longitude',
             'species1',
             'species2',
             'species3',
@@ -191,8 +196,6 @@ class Loader(object):
             # 'tincidencebinary',
             'bincidence',
             # 'bincidencebinary',
-            'zincidence',
-            # 'zincidencebinary',
             'percent of housing crowded',
             'per capita income ',
             'total housing units',
@@ -226,7 +229,7 @@ class Loader(object):
         train_i = self.merged.drop(self.target, axis=1)
         train_t = self.merged[self.target]
         train_i.drop(['year'], axis=1, inplace=True)
-        model = FFN(n_features=len(train_i.columns), hidden=200, n_classes=1)
+        model = FFN(n_features=len(train_i.columns), hidden=500, n_classes=1)
         model.fit(train_i.values, train_t.values)
         self.keep_cols.remove(self.target)
         merged_test = self._merge_df(self.test)

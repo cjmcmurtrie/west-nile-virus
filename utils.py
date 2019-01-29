@@ -108,20 +108,82 @@ def load_city_data():
     return df
 
 
-def trap_incidence():
-    df = get_df('train')
-    incidence = df.groupby('trap').sum().reset_index()
-    incidence = incidence[['trap', 'wnvpresent']]
-    incidence.rename(columns={'wnvpresent': 'tincidence'}, inplace=True)
-    return incidence
+def trap_incidence(df):
+    df['year'] = df['date'].apply(lambda x: x.year)
+    idf = get_df('train')
+    idf['year'] = idf['date'].apply(lambda x: date(x).year)
+    idf = idf.groupby(['year', 'trap']).sum().reset_index()
+    idf = idf[['year', 'trap', 'wnvpresent']]
+    idf.rename(columns={'wnvpresent': 'tincidence'}, inplace=True)
+    df = pd.merge(df, idf, how='left', on=['year', 'trap'], suffixes=['', '_'])
+    df.to_csv('tincidence.csv')
+    return df
 
 
-def block_incidence():
-    df = get_df('train')
-    incidence = df.groupby('block').sum().reset_index()
-    incidence = incidence[['block', 'wnvpresent']]
-    incidence.rename(columns={'wnvpresent': 'bincidence'}, inplace=True)
-    return incidence
+def infer_test_trap_incidence(df):
+    traindf = get_df('train')
+    traindf['date'] = traindf['date'].apply(lambda x: date(x))
+    tri = trap_incidence(traindf)
+    tri = tri[['year', 'trap', 'tincidence']].drop_duplicates()
+    df['wnvpresent'] = None
+    tei = trap_incidence(df)
+    tei = tei[['year', 'trap', 'tincidence']].drop_duplicates()
+    mergedi = pd.concat([tri, tei], axis=0)
+    mergedi.sort_values(['trap', 'year'], inplace=True)
+    dfs = []
+    for trap, data in mergedi.groupby('trap'):
+        data = data.interpolate()
+        try:
+            data = data.fillna(data['tincidence'].mode().values[0])
+        except IndexError:
+            data['tincidence'] = mergedi.tincidence.mean()
+        dfs.append(data)
+    mergedi = pd.concat(dfs, axis=0)
+    mergedi.iloc[:].tincidence[mergedi.year == 2010] *= 3.1
+    mergedi.iloc[:].tincidence[mergedi.year == 2012] *= 2.0
+    mergedi.iloc[:].tincidence[mergedi.year == 2014] *= 0.5
+    df = pd.merge(df, mergedi, how='left', on=['year', 'trap'], suffixes=['tr_', ''])
+    df['tincidencebinary'] = (df['tincidence'].values > 0).astype(int)
+    return df
+
+
+def block_incidence(df):
+    df['year'] = df['date'].apply(lambda x: x.year)
+    idf = get_df('train')
+    idf['year'] = idf['date'].apply(lambda x: date(x).year)
+    idf = idf.groupby(['year', 'block']).sum().reset_index()
+    idf = idf[['year', 'block', 'wnvpresent']]
+    idf.rename(columns={'wnvpresent': 'bincidence'}, inplace=True)
+    df = pd.merge(df, idf, how='left', on=['year', 'block'], suffixes=['', '_'])
+    df.to_csv('bincidence.csv')
+    return df
+
+
+def infer_test_block_incidence(df):
+    traindf = get_df('train')
+    traindf['date'] = traindf['date'].apply(lambda x: date(x))
+    tri = block_incidence(traindf)
+    tri = tri[['year', 'block', 'bincidence']].drop_duplicates()
+    df['wnvpresent'] = None
+    tei = block_incidence(df)
+    tei = tei[['year', 'block', 'bincidence']].drop_duplicates()
+    mergedi = pd.concat([tri, tei], axis=0)
+    mergedi.sort_values(['block', 'year'], inplace=True)
+    dfs = []
+    for block, data in mergedi.groupby('block'):
+        data = data.interpolate()
+        try:
+            data = data.fillna(data['bincidence'].mode().values[0])
+        except IndexError:
+            data['bincidence'] = mergedi.bincidence.mean()
+        dfs.append(data)
+    mergedi = pd.concat(dfs, axis=0)
+    mergedi.iloc[:].bincidence[mergedi.year == 2010] *= 3.1
+    mergedi.iloc[:].bincidence[mergedi.year == 2012] *= 2.0
+    mergedi.iloc[:].bincidence[mergedi.year == 2014] *= 0.5
+    df = pd.merge(df, mergedi, how='left', on=['year', 'block'], suffixes=['tr_', ''])
+    df['bincidencebinary'] = (df['bincidence'].values > 0).astype(int)
+    return df
 
 
 def zipcode_incidence():
@@ -134,4 +196,7 @@ def zipcode_incidence():
 
 
 if __name__ == '__main__':
-    zipcode_incidence()
+    train = get_df('train')
+    train = trap_incidence(train)
+    test = get_df('test')
+    infer_test_trap_incidence(test)
