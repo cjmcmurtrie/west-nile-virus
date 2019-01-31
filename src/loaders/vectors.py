@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from src.builders.traps import build_train_traps, build_test_traps, impute_test_incidence
+from src.builders.traps import build_train_traps, build_test_traps
 from src.builders.weather import build_weather, build_aggregate_weather
 from src.builders.indicators import build_indicators
 from src.builders.utils import normalise_columns
@@ -32,15 +32,12 @@ class Loader(object):
     def __init__(self, target='wnvpresent', traps=True, weather=False, indicators=False):
         self.target = target
         self.traps = build_train_traps()
-        # self.weather = build_aggregate_weather('month')
-        # self.indicators = build_indicators()
+        self.weather = build_aggregate_weather('month')
+        self.indicators = build_indicators()
         self.eval = build_test_traps(self.traps)
         self._merge(weather=weather, indicators=indicators)
         self._select(traps=traps, weather=weather, indicators=indicators)
-        self.data = normalise_columns(self.data)
-        # self.data = normalise_columns(self.data)
-        # self.eval = normalise_columns(self.eval)
-        # self._normalize_eval()
+        self._normalize_eval()
         self.train_in = None
         self.train_tar = None
         self.test_in = None
@@ -120,21 +117,21 @@ class Loader(object):
             self.eval_tar = None
 
     def get_train(self):
-        inputs = normalise_columns(self.train_in).values
+        inputs = self.train_in.values
         targets = self.train_tar.values
         assert not np.isnan(inputs).any()
         assert not np.isnan(targets).any()
         return inputs, targets
 
     def get_test(self):
-        inputs = normalise_columns(self.test_in).values
+        inputs = self.test_in.values
         targets = self.test_tar.values
         assert not np.isnan(inputs).any()
         assert not np.isnan(targets).any()
         return inputs, targets
 
     def get_eval(self):
-        inputs = normalise_columns(self.eval_in).values
+        inputs = self.eval_in.values
         assert not np.isnan(inputs).any()
         return inputs
 

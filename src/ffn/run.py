@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore")
 np.random.seed(1)
 
 
-def run(test=True, submit=True):
+def run(test=False, submit=True):
     scores = []
     year_scores = []
     loader = Loader()
@@ -21,7 +21,7 @@ def run(test=True, submit=True):
                 loader.split(mode='test', year=year)
                 model = FFN(n_features=loader.num_columns(), hidden=500, n_classes=1)
                 x, y = loader.get_train()
-                model.fit(x, y, epochs=20)
+                model.fit(x, y, epochs=10)
                 xt, yt = loader.get_test()
                 probas = model.predict_proba(xt)
                 scores.append(roc_auc_score(yt, probas))
