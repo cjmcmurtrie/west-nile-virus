@@ -1,15 +1,23 @@
 # West Nile Disease
 
-## Notes
+Best score achieved from this codebase was 0.81244 public, 0.79615 private.
 
-### Mosquitoes
-- Mosquitoes become more active during a full moon (up to 500%).
-- Mosquitoes are attracted to CO2.
-- Some mosquitoes feed in the day and some at night.
-- Mosquitoes are more active in summer than winter.
-- Chicago mosquitoes are most active in June.
-- See more in the Google doc.
+## Requirements
 
-### West Nile virus
-- West Nile virus more likely in hot/dry weather than cold/wet.
-- See more in the Google doc.
+- Python 3.5
+
+See requirements.txt for Python package requirements.
+
+## Usage
+
+Create a `data/` directory in project root. Download and extract [this](https://drive.google.com/open?id=1UvwcmnLmOJejn_KQUhisUDJEou29m_P1) archive to the directory (there are extra data files not found in the Kaggle archive). Then run the following commands.
+
+```
+$ virtualenv -p python3.5 env/
+$ source env/bin/activate
+(env)$ pip install -r requirements.txt
+(env)$ mkdir submissions/
+(env)$ python src/ffn/run.py
+```
+
+A new timestamped submission file should be found in `submissions/`.

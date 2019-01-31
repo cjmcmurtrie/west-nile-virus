@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.optim as onn
-import torch.nn.functional as fnn
 
 
 torch.manual_seed(1)
