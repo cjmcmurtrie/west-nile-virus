@@ -1,4 +1,4 @@
-# West Nile Disease
+# West Nile Virus Prediction
 
 Best score achieved from this codebase was __0.81244__ public, __0.79615__ private.
 
