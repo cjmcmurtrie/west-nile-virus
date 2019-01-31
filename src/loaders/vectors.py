@@ -10,7 +10,7 @@ FEATURES = {
     'trap_features': [
         'species1', 'species2', 'species3', 'species4', 'species5', 'species6',
         'latitude', 'longitude', 'year', 'day', 'week', 'month', 'day_sine', 'month_cosine',
-        'nummosquitos', 'trap_nummosquitos_mean', 'block_nummosquitos_mean', 'trap_last_checked',
+        'nummosquitos', 'trap_nummosquitos_mean', 'block_nummosquitos_mean',
     ],
     'weather_features': [
         'tmax', 'tmin', 'heat', 'cool', 'dewpoint', 'preciptotal',
