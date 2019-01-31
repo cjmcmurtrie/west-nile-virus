@@ -34,7 +34,7 @@ def build_submission(loader, plot=True):
     loader.split(mode='submit')
     train_in, train_tar = loader.get_train()
     model = FFN(n_features=loader.num_columns(), hidden=500, n_classes=1)
-    model.fit(train_in, train_tar)
+    model.fit(train_in, train_tar, epochs=10)
     eval_in = loader.get_eval()
     probas = model.predict_proba(eval_in)
     probas = rescale_probas(probas, loader)

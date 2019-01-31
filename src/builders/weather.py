@@ -23,18 +23,18 @@ def build_weather():
 
 
 def build_aggregate_weather(by='month'):
-    pass
-    # todo
-    # get time-windowed average features for weather.
-    # want - a vector per year with features such as month1_tmax, month2_tmax, ...
     df = get_df('weather')
     df = df[df.station == 1]
     df = prepare_weather(df)
     df = extra_features(df)
     df = df.apply(lambda x: pd.to_numeric(x, errors='ignore'))
-    df_agg = df.groupby(['year', by]).mean().reset_index()
+    df_agg = df.groupby(['year', by])\
+        .mean()\
+        .reset_index()
     cc = df_agg.groupby('year').cumcount() + 1
-    df_agg = df_agg.set_index(['year', cc]).unstack().sort_index(1, level=1)
+    df_agg = df_agg.set_index(['year', cc])\
+        .unstack()\
+        .sort_index(1, level=1)
     df_agg.columns = ['_'.join(map(str, i)) for i in df_agg.columns]
     df_agg.reset_index()
     df_agg = df_agg.interpolate(method='pad')

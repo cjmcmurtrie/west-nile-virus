@@ -1,7 +1,6 @@
 import math
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
 from src.builders.utils import (
     write_csv, verbose, normalise_columns,
     get_df, str_to_date, day, week, month, year, address_zipcode

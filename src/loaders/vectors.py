@@ -6,23 +6,22 @@ from src.builders.indicators import build_indicators
 from src.builders.utils import normalise_columns
 
 
-COLS = {
-    'remove': ['address', 'addressaccuracy'],
+FEATURES = {
     'trap_features': [
-        'latitude', 'longitude', 'year', 'day', 'month', 'day_sine', 'month_cosine',    # 'week',
         'species1', 'species2', 'species3', 'species4', 'species5', 'species6',
-        'nummosquitos', 'trap_nummosquitos_mean', 'block_nummosquitos_mean',
-        # 'trap_last_checked',
-        # indicator features
-        # todo
+        'latitude', 'longitude', 'year', 'day', 'week', 'month', 'day_sine', 'month_cosine',
+        'nummosquitos', 'trap_nummosquitos_mean', 'block_nummosquitos_mean', 'trap_last_checked',
     ],
     'weather_features': [
-        # 'daylength',
-        # 'date', 'tmax', 'tmin', 'tavg', 'depart', 'dewpoint',
-        # 'heat', 'cool', 'sunrise', 'sunset', 'snowfall', 'preciptotal', 'stnpressure',
-        # 'sealevel', 'resultspeed', 'resultdir', 'avgspeed'
+        'tmax', 'tmin', 'heat', 'cool', 'dewpoint', 'preciptotal',
+        'daylength', 'date', 'tmax', 'tmin', 'tavg', 'depart', 'dewpoint',
+        'heat', 'cool', 'sunrise', 'sunset', 'snowfall', 'preciptotal', 'stnpressure',
+        'sealevel', 'resultspeed', 'resultdir', 'avgspeed'
     ],
-    'indicator_features': []
+    'indicator_features': [
+        'zipcode', 'ind_lat', 'ind_lon', 'crowding', 'income pc',
+        'population', 'white', 'afam', 'asian', 'hispanic', 'total housing', 'vacants',
+    ]
 }
 
 
@@ -32,8 +31,8 @@ class Loader(object):
     def __init__(self, target='wnvpresent', traps=True, weather=False, indicators=False):
         self.target = target
         self.traps = build_train_traps()
-        self.weather = build_aggregate_weather('month')
-        self.indicators = build_indicators()
+        self.weather = None
+        self.indicators = None
         self.eval = build_test_traps(self.traps)
         self._merge(weather=weather, indicators=indicators)
         self._select(traps=traps, weather=weather, indicators=indicators)
@@ -44,6 +43,7 @@ class Loader(object):
         self.test_tar = None
 
     def _merge(self, weather, indicators):
+        self.weather = build_aggregate_weather('month')
         if weather:
             self.traps = pd.merge(
                 self.traps, self.weather,
@@ -54,6 +54,7 @@ class Loader(object):
                 how='left', on='year', suffixes=['', '_weather']
             )
         if indicators:
+            self.indicators = build_indicators()
             self.traps = pd.merge(
                 self.traps, self.indicators,
                 how='left', on='zipcode', suffixes=['', '_indicators']
@@ -74,14 +75,14 @@ class Loader(object):
     def _select(self, traps, weather, indicators):
         cols = []
         if traps:
-            cols.extend(COLS['trap_features'])
+            cols.extend(FEATURES['trap_features'])
         if weather:
-            for wf in COLS['weather_features']:
+            for wf in FEATURES['weather_features']:
                 for wc in self.weather.columns:
                     if wf in wc:
                         cols.append(wc)
         if indicators:
-            cols.extend(COLS['indicator_features'])
+            cols.extend(FEATURES['indicator_features'])
         self.data = self.traps[cols + [self.target]]
         self.eval = self.eval[cols]
 
@@ -89,11 +90,9 @@ class Loader(object):
         # todo: normalize eval and training data together.
         conc = pd.concat([self.data, self.eval])
         conc = normalise_columns(conc)
-        conc.reset_index(inplace=True)
-        self.data = conc.iloc[:len(self.data.index)][self.data.columns]
-        self.eval = conc.iloc[len(self.data.index):][self.eval.columns]
-        self.data.to_csv('inspect_train.csv')
-        self.eval.to_csv('inspect_eval.csv')
+        split_ix = len(self.data.index)
+        self.data = conc.iloc[:split_ix][self.data.columns]
+        self.eval = conc.iloc[split_ix:][self.eval.columns]
 
     def split(self, mode='test', year=None):
         if mode == 'test':

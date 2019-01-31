@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore")
 np.random.seed(1)
 
 
-def run(test=False, submit=True):
+def run(test=True, submit=True):
     scores = []
     year_scores = []
     loader = Loader()
