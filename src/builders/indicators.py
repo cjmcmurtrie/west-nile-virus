@@ -22,6 +22,7 @@ def build_indicators():
     df = load_city_data()
     df.rename(columns=COLS, inplace=True)
     df = df[list(COLS.values())]
+    df = extra_features(df)
     return df
 
 
@@ -32,6 +33,11 @@ def load_city_data():
     zipcodes = get_df('comarea_zipcode')
     df = pd.merge(city, zipcodes, left_on='community area number', right_on='chgoca')
     df = df.groupby('zcta5').mean().reset_index()
+    return df
+
+
+def extra_features(df):
+    df['vacant ratio'] = df['vacants'] / df['total housing']
     return df
 
 

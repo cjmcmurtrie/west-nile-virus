@@ -26,7 +26,7 @@ def rescale_probas(probas, loader):
     }
     years = loader.eval_years
     for year, factor in year_factors.items():
-        probas[years[years == year].index] *= factor ** 1.25
+        probas[years[years == year].index] *= factor ** 1       # .25
     return probas
 
 
@@ -34,7 +34,7 @@ def build_submission(loader, plot=True):
     loader.split(mode='submit')
     train_in, train_tar = loader.get_train()
     model = FFN(n_features=loader.num_columns(), hidden=500, n_classes=1)
-    model.fit(train_in, train_tar, epochs=10)
+    model.fit(train_in, train_tar, epochs=20)
     eval_in = loader.get_eval()
     probas = model.predict_proba(eval_in)
     probas = rescale_probas(probas, loader)

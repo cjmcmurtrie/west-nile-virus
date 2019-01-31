@@ -13,14 +13,10 @@ FEATURES = {
         'nummosquitos', 'trap_nummosquitos_mean', 'block_nummosquitos_mean',
     ],
     'weather_features': [
-        'tmax', 'tmin', 'heat', 'cool', 'dewpoint', 'preciptotal',
-        'daylength', 'date', 'tmax', 'tmin', 'tavg', 'depart', 'dewpoint',
-        'heat', 'cool', 'sunrise', 'sunset', 'snowfall', 'preciptotal', 'stnpressure',
-        'sealevel', 'resultspeed', 'resultdir', 'avgspeed'
+        'daylight', 'cumprecip', 'cumtmax', 'cumheat'
     ],
     'indicator_features': [
-        'zipcode', 'ind_lat', 'ind_lon', 'crowding', 'income pc',
-        'population', 'white', 'afam', 'asian', 'hispanic', 'total housing', 'vacants',
+        'vacants', 'afam', 'vacant ratio'
     ]
 }
 
@@ -28,7 +24,7 @@ FEATURES = {
 class Loader(object):
     years = [2007, 2009, 2011, 2013]
 
-    def __init__(self, target='wnvpresent', traps=True, weather=False, indicators=False):
+    def __init__(self, target='wnvpresent', traps=True, weather=False, indicators=True):
         self.target = target
         self.traps = build_train_traps()
         self.weather = None
@@ -43,51 +39,48 @@ class Loader(object):
         self.test_tar = None
 
     def _merge(self, weather, indicators):
-        self.weather = build_aggregate_weather('month')
+        self.weather = build_weather()
+        self.data = self.traps
         if weather:
-            self.traps = pd.merge(
-                self.traps, self.weather,
-                how='left', on='year', suffixes=['', '_weather']
+            self.data = pd.merge(
+                self.data, self.weather,
+                how='left', on='date', suffixes=['', '_weather']
             )
             self.eval = pd.merge(
                 self.eval, self.weather,
-                how='left', on='year', suffixes=['', '_weather']
+                how='left', on='date', suffixes=['', '_weather']
             )
         if indicators:
             self.indicators = build_indicators()
-            self.traps = pd.merge(
-                self.traps, self.indicators,
+            self.data = pd.merge(
+                self.data, self.indicators,
                 how='left', on='zipcode', suffixes=['', '_indicators']
             )
             self.eval = pd.merge(
                 self.eval, self.indicators,
                 how='left', on='zipcode', suffixes=['', '_indicators']
             )
-            self.traps.afam.fillna(
-                self.traps.vacants.mean(),
-                inplace=True
-            )
-            self.eval.afam.fillna(
-                self.traps.vacants.mean(),
-                inplace=True
-            )
+            for col in FEATURES['indicator_features']:
+                self.data[col].fillna(self.data[col].mean(), inplace=True)
+                self.eval[col].fillna(self.eval[col].mean(), inplace=True)
 
-    def _select(self, traps, weather, indicators):
+    def _select(self, traps, weather, indicators, agg_weather=False):
         cols = []
         if traps:
             cols.extend(FEATURES['trap_features'])
         if weather:
+            cols.extend(FEATURES['weather_features'])
+        if agg_weather:
             for wf in FEATURES['weather_features']:
                 for wc in self.weather.columns:
                     if wf in wc:
                         cols.append(wc)
         if indicators:
             cols.extend(FEATURES['indicator_features'])
-        self.data = self.traps[cols + [self.target]]
+        self.data = self.data[cols + [self.target]]
         self.eval = self.eval[cols]
 
     def _normalize_eval(self):
-        # todo: normalize eval and training data together.
         conc = pd.concat([self.data, self.eval])
         conc = normalise_columns(conc)
         split_ix = len(self.data.index)

@@ -60,23 +60,10 @@ def extra_features(df):
     df['dl_binary'] = (df['daylight'] > 10).astype(int)
     years = []
     for year, year_df in df.groupby('year'):
-        year_df['rainprev'] = (
-                np.hstack([
-                    np.array([0] * 2),
-                    year_df['preciptotal'][:-2].values
-                ]
-                ).astype(float) > 0).astype(int)
-        year_df['dpprev'] = np.hstack([
-            np.array([0] * 1),
-            year_df['dewpoint'][:-1].values
-        ])
-        year_df['wbprev'] = np.hstack([
-            np.array([0] * 1),
-            year_df['wetbulb'][:-1].values
-        ])
-        year_df['cumtmax'] = rolling_average(year_df['tmax'], window=11)
-        year_df['cumtmin'] = rolling_average(year_df['tmin'], window=11)
-        year_df['cumdir'] = rolling_average(year_df['resultdir'], window=2)
+        year_df['cumdaylight'] = rolling_average(year_df['daylight'], window=7)
+        year_df['cumtmax'] = rolling_average(year_df['tmax'], window=10)
+        year_df['cumheat'] = rolling_average(year_df['heat'], window=10)
+        year_df['cumprecip'] = rolling_average(year_df['preciptotal'], window=10)
         years.append(year_df)
     df = pd.concat(years)
     return df

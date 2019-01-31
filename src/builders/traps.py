@@ -81,7 +81,7 @@ def impute_test_incidence(df, imputation_source, obj_cols, agg_cols):
                 on=['year', obj_col],
                 suffixes=['_', '']
             )[incidence_col]
-            df[incidence_col].fillna(0, inplace=True)
+            df[incidence_col].fillna(df[incidence_col].mean(), inplace=True)
             # todo: missing values are just set to zero now.
     return df
 
