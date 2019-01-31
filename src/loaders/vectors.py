@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from src.builders.traps import build_train_traps, build_test_traps, impute_test_incidence
-from src.builders.weather import build_weather
+from src.builders.weather import build_weather, build_aggregate_weather
 from src.builders.indicators import build_indicators
 from src.builders.utils import normalise_columns, normalise_series
 
@@ -15,7 +15,9 @@ COLS = {
         'nummosquitos', 'trap_nummosquitos_mean', 'block_nummosquitos_mean',
         # 'trap_last_checked',
         # weather features
-        'daylight',
+        'tmax', 'tmin', 'dewpoint', 'resultspeed', 'resultdir',
+        'heat', 'cool', 'sunrise', 'sunset', 'snowfall', 'preciptotal', 'stnpressure',
+        'sealevel', 'resultspeed', 'resultdir', 'avgspeed'
         # None seem to do much, leaving for now.
         # indicator features
         # These aren't working either.
@@ -29,7 +31,8 @@ class Loader(object):
     def __init__(self, target='wnvpresent'):
         self.target = target
         self.traps = build_train_traps()
-        self.weather = build_weather()
+        # self.weather = build_weather()
+        self.weather = build_aggregate_weather('month')
         self.indicators = build_indicators()
         self.eval = build_test_traps(self.traps)
         self._merge()
@@ -44,12 +47,14 @@ class Loader(object):
         if merge_weather:
             self.traps = pd.merge(
                 self.traps, self.weather,
-                how='left', on='date', suffixes=['', '_weather']
+                how='left', on='month', suffixes=['', '_weather']
             )
             self.eval = pd.merge(
                 self.eval, self.weather,
-                how='left', on='date', suffixes=['', '_weather']
+                how='left', on='month', suffixes=['', '_weather']
             )
+            self.traps[self.weather.columns] = self.weather
+            self.eval[self.weather.columns] = self.weather
         if merge_indicators:
             self.traps = pd.merge(
                 self.traps, self.indicators,
