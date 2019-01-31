@@ -3,59 +3,60 @@ import pandas as pd
 from src.builders.traps import build_train_traps, build_test_traps, impute_test_incidence
 from src.builders.weather import build_weather, build_aggregate_weather
 from src.builders.indicators import build_indicators
-from src.builders.utils import normalise_columns, normalise_series
+from src.builders.utils import normalise_columns
 
 
 COLS = {
     'remove': ['address', 'addressaccuracy'],
-    'final_features': [
-        # traps features
-        'latitude', 'longitude', 'year', 'day', 'month', 'day_sine', 'month_cosine',
+    'trap_features': [
+        'latitude', 'longitude', 'year', 'day', 'month', 'day_sine', 'month_cosine',    # 'week',
         'species1', 'species2', 'species3', 'species4', 'species5', 'species6',
         'nummosquitos', 'trap_nummosquitos_mean', 'block_nummosquitos_mean',
         # 'trap_last_checked',
-        # weather features
-        'tmax', 'tmin', 'dewpoint', 'resultspeed', 'resultdir',
-        'heat', 'cool', 'sunrise', 'sunset', 'snowfall', 'preciptotal', 'stnpressure',
-        'sealevel', 'resultspeed', 'resultdir', 'avgspeed'
-        # None seem to do much, leaving for now.
         # indicator features
-        # These aren't working either.
-    ]
+        # todo
+    ],
+    'weather_features': [
+        # 'daylength',
+        # 'date', 'tmax', 'tmin', 'tavg', 'depart', 'dewpoint',
+        # 'heat', 'cool', 'sunrise', 'sunset', 'snowfall', 'preciptotal', 'stnpressure',
+        # 'sealevel', 'resultspeed', 'resultdir', 'avgspeed'
+    ],
+    'indicator_features': []
 }
 
 
 class Loader(object):
     years = [2007, 2009, 2011, 2013]
 
-    def __init__(self, target='wnvpresent'):
+    def __init__(self, target='wnvpresent', traps=True, weather=False, indicators=False):
         self.target = target
         self.traps = build_train_traps()
-        # self.weather = build_weather()
-        self.weather = build_aggregate_weather('month')
-        self.indicators = build_indicators()
+        # self.weather = build_aggregate_weather('month')
+        # self.indicators = build_indicators()
         self.eval = build_test_traps(self.traps)
-        self._merge()
-        self.data = self.traps[COLS['final_features'] + [self.target]]
-        self.eval = self.eval[COLS['final_features']]
+        self._merge(weather=weather, indicators=indicators)
+        self._select(traps=traps, weather=weather, indicators=indicators)
+        self.data = normalise_columns(self.data)
+        # self.data = normalise_columns(self.data)
+        # self.eval = normalise_columns(self.eval)
+        # self._normalize_eval()
         self.train_in = None
         self.train_tar = None
         self.test_in = None
         self.test_tar = None
 
-    def _merge(self, merge_weather=True, merge_indicators=True):
-        if merge_weather:
+    def _merge(self, weather, indicators):
+        if weather:
             self.traps = pd.merge(
                 self.traps, self.weather,
-                how='left', on='month', suffixes=['', '_weather']
+                how='left', on='year', suffixes=['', '_weather']
             )
             self.eval = pd.merge(
                 self.eval, self.weather,
-                how='left', on='month', suffixes=['', '_weather']
+                how='left', on='year', suffixes=['', '_weather']
             )
-            self.traps[self.weather.columns] = self.weather
-            self.eval[self.weather.columns] = self.weather
-        if merge_indicators:
+        if indicators:
             self.traps = pd.merge(
                 self.traps, self.indicators,
                 how='left', on='zipcode', suffixes=['', '_indicators']
@@ -72,6 +73,30 @@ class Loader(object):
                 self.traps.vacants.mean(),
                 inplace=True
             )
+
+    def _select(self, traps, weather, indicators):
+        cols = []
+        if traps:
+            cols.extend(COLS['trap_features'])
+        if weather:
+            for wf in COLS['weather_features']:
+                for wc in self.weather.columns:
+                    if wf in wc:
+                        cols.append(wc)
+        if indicators:
+            cols.extend(COLS['indicator_features'])
+        self.data = self.traps[cols + [self.target]]
+        self.eval = self.eval[cols]
+
+    def _normalize_eval(self):
+        # todo: normalize eval and training data together.
+        conc = pd.concat([self.data, self.eval])
+        conc = normalise_columns(conc)
+        conc.reset_index(inplace=True)
+        self.data = conc.iloc[:len(self.data.index)][self.data.columns]
+        self.eval = conc.iloc[len(self.data.index):][self.eval.columns]
+        self.data.to_csv('inspect_train.csv')
+        self.eval.to_csv('inspect_eval.csv')
 
     def split(self, mode='test', year=None):
         if mode == 'test':
@@ -115,4 +140,3 @@ class Loader(object):
 
     def num_columns(self):
         return len(self.train_in.columns)   # Year column is removed.
-

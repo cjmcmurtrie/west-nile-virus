@@ -1,3 +1,4 @@
+from functools import reduce
 import numpy as np
 import pandas as pd
 from src.builders.utils import (
@@ -12,6 +13,7 @@ COLS = [
     'sealevel', 'resultspeed', 'resultdir', 'avgspeed'
 ]
 
+
 def build_weather():
     df = get_df('weather')
     df = df[df.station == 1]
@@ -20,19 +22,22 @@ def build_weather():
     return df
 
 
-def build_aggregate_weather(by='year'):
+def build_aggregate_weather(by='month'):
     pass
     # todo
     # get time-windowed average features for weather.
+    # want - a vector per year with features such as month1_tmax, month2_tmax, ...
     df = get_df('weather')
     df = df[df.station == 1]
     df = prepare_weather(df)
-    df_agg = df.groupby(by).mean().reset_index()
-    row = list(df_agg.values.flatten())
-    df_row = pd.DataFrame([row], columns=['w' + str(i) for i in range(row.shape[0])])
-    # todo: most columns are vanishing. thanks pandas
-    # df_agg.rename(columns={c: c + '_w_agg' for c in df_agg.columns if c != by}, inplace=True)
-    df_agg.to_csv('inspect.csv')
+    df = extra_features(df)
+    df = df.apply(lambda x: pd.to_numeric(x, errors='ignore'))
+    df_agg = df.groupby(['year', by]).mean().reset_index()
+    cc = df_agg.groupby('year').cumcount() + 1
+    df_agg = df_agg.set_index(['year', cc]).unstack().sort_index(1, level=1)
+    df_agg.columns = ['_'.join(map(str, i)) for i in df_agg.columns]
+    df_agg.reset_index()
+    df_agg = df_agg.interpolate(method='pad')
     return df_agg
 
 
@@ -55,9 +60,20 @@ def extra_features(df):
     df['dl_binary'] = (df['daylight'] > 10).astype(int)
     years = []
     for year, year_df in df.groupby('year'):
-        year_df['rainprev'] = (np.hstack([np.array([0] * 2), year_df['preciptotal'][:-2].values]).astype(float) > 0).astype(int)
-        year_df['dpprev'] = np.hstack([np.array([0] * 1), year_df['dewpoint'][:-1].values])
-        year_df['wbprev'] = np.hstack([np.array([0] * 1), year_df['wetbulb'][:-1].values])
+        year_df['rainprev'] = (
+                np.hstack([
+                    np.array([0] * 2),
+                    year_df['preciptotal'][:-2].values
+                ]
+                ).astype(float) > 0).astype(int)
+        year_df['dpprev'] = np.hstack([
+            np.array([0] * 1),
+            year_df['dewpoint'][:-1].values
+        ])
+        year_df['wbprev'] = np.hstack([
+            np.array([0] * 1),
+            year_df['wetbulb'][:-1].values
+        ])
         year_df['cumtmax'] = rolling_average(year_df['tmax'], window=11)
         year_df['cumtmin'] = rolling_average(year_df['tmin'], window=11)
         year_df['cumdir'] = rolling_average(year_df['resultdir'], window=2)
@@ -71,4 +87,4 @@ def rolling_average(series, window, min_periods=1):
 
 
 if __name__ == '__main__':
-    build_aggregate_weather(by='month')
+    print(build_aggregate_weather(by='month'))

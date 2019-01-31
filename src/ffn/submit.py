@@ -30,7 +30,7 @@ def rescale_probas(probas, loader):
     return probas
 
 
-def build_submission(loader):
+def build_submission(loader, plot=True):
     loader.split(mode='submit')
     train_in, train_tar = loader.get_train()
     model = FFN(n_features=loader.num_columns(), hidden=500, n_classes=1)
@@ -39,8 +39,9 @@ def build_submission(loader):
     probas = model.predict_proba(eval_in)
     probas = rescale_probas(probas, loader)
     probas = probas
-    plt.plot(probas)
-    plt.show()
+    if plot:
+        plt.plot(probas)
+        plt.show()
     ids = range(1, probas.shape[0] + 1)
     submission = pd.DataFrame({
         'Id': ids,
